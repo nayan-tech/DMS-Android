@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    ~ Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+    ~
+    ~ Licensed under the Apache License, Version 2.0 (the "License");
+    ~ you may not use this file except in compliance with the License.
+    ~ You may obtain a copy of the License at
+    ~
+    ~       http://www.apache.org/licenses/LICENSE-2.0
+    ~
+    ~ Unless required by applicable law or agreed to in writing, software
+    ~ distributed under the License is distributed on an "AS IS" BASIS,
+    ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    ~ See the License for the specific language governing permissions and
+    ~ limitations under the License.
+-->
+<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/camera_container"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <androidx.camera.view.PreviewView
+        android:id="@+id/view_finder"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <com.google.mediapipe.examples.facelandmarker.OverlayView
+        android:id="@+id/overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <include
+        android:id="@+id/bottom_sheet_layout"
+        layout="@layout/info_bottom_sheet" />
+    <LinearLayout
+    android:id="@+id/counter_overlay"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_gravity="top"
+    android:orientation="horizontal"
+    android:background="@color/bottom_sheet_background"
+    android:padding="12dp"
+    android:gravity="center"
+    android:layout_marginBottom="@dimen/bottom_sheet_peek_height">
+
+    <TextView
+        android:id="@+id/tvDrowsyCount"
+        android:layout_width="0dp"
+        android:layout_weight="1"
+        android:layout_height="wrap_content"
+        android:text="Drowsy: 0"
+        android:textColor="@android:color/black"
+        android:textSize="18sp"
+        android:gravity="center" />
+
+    <TextView
+        android:id="@+id/tvYawnCount"
+        android:layout_width="0dp"
+        android:layout_weight="1"
+        android:layout_height="wrap_content"
+        android:text="Yawn: 0"
+        android:textColor="@android:color/black"
+        android:textSize="18sp"
+        android:gravity="center" />
+
+    <TextView
+        android:id="@+id/tvSleepCount"
+        android:layout_width="0dp"
+        android:layout_weight="1"
+        android:layout_height="wrap_content"
+        android:text="Sleep: 0"
+        android:textColor="@android:color/black"
+        android:textSize="18sp"
+        android:gravity="center" />
+        
+    <TextView
+    	android:id="@+id/tvCalibrating"
+	android:layout_width="match_parent"
+    	android:layout_height="wrap_content"
+    	android:text="Calibrating..."
+    	android:textColor="@android:color/holo_orange_light"
+    	android:textSize="20sp"
+    	android:gravity="center"
+    	android:background="#88000000"
+    	android:visibility="gone"
+    	android:padding="8dp"
+    	android:elevation="10dp"
+    	android:layout_gravity="top" />
+
+</LinearLayout>
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>
