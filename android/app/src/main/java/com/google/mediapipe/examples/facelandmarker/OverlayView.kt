@@ -1,24 +1,12 @@
 package com.google.mediapipe.examples.facelandmarker
 
-/*
- * Copyright 2023 The TensorFlow Authors. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *             http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.RectF
+import android.os.Handler
+import android.os.Looper
 import android.util.AttributeSet
 import android.view.View
 import androidx.core.content.ContextCompat
@@ -35,10 +23,19 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
     private var results: FaceLandmarkerResult? = null
     private var linePaint = Paint()
     private var pointPaint = Paint()
+    private var boxPaint = Paint()
+    private var labelPaint = Paint()
+    private var labelBackgroundPaint = Paint()
 
     private var scaleFactor: Float = 1f
     private var imageWidth: Int = 1
     private var imageHeight: Int = 1
+
+    private var boundingBox: RectF? = null
+    private var boxLabel: String? = null
+    private val handler = Handler(Looper.getMainLooper())
+    private var lastBoxTimestamp: Long = 0L
+    private val boundingBoxDuration = 2000L // 2 seconds
 
     init {
         initPaints()
@@ -46,80 +43,113 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
 
     fun clear() {
         results = null
+        boundingBox = null
+        boxLabel = null
         linePaint.reset()
         pointPaint.reset()
+        boxPaint.reset()
+        labelPaint.reset()
+        labelBackgroundPaint.reset()
         invalidate()
         initPaints()
     }
 
     private fun initPaints() {
-        linePaint.color =
-            ContextCompat.getColor(context!!, R.color.mp_color_primary)
+        linePaint.color = ContextCompat.getColor(context!!, R.color.mp_color_primary)
         linePaint.strokeWidth = LANDMARK_STROKE_WIDTH
         linePaint.style = Paint.Style.STROKE
 
         pointPaint.color = Color.YELLOW
         pointPaint.strokeWidth = LANDMARK_STROKE_WIDTH
         pointPaint.style = Paint.Style.FILL
+
+        boxPaint.color = Color.RED
+        boxPaint.strokeWidth = 5f
+        boxPaint.style = Paint.Style.STROKE
+
+        labelPaint.color = Color.WHITE
+        labelPaint.textSize = 60f
+        labelPaint.isAntiAlias = true
+        labelPaint.style = Paint.Style.FILL
+
+        labelBackgroundPaint.color = Color.RED
+        labelBackgroundPaint.style = Paint.Style.FILL
     }
 
     override fun draw(canvas: Canvas) {
         super.draw(canvas)
 
-        // Clear previous drawings if results exist but have no face landmarks
         if (results?.faceLandmarks().isNullOrEmpty()) {
             clear()
             return
         }
 
         results?.let { faceLandmarkerResult ->
-
-            // Calculate scaled image dimensions
             val scaledImageWidth = imageWidth * scaleFactor
             val scaledImageHeight = imageHeight * scaleFactor
 
-            // Calculate offsets to center the image on the canvas
             val offsetX = (width - scaledImageWidth) / 2f
             val offsetY = (height - scaledImageHeight) / 2f
 
-            // Iterate through each detected face
             faceLandmarkerResult.faceLandmarks().forEach { faceLandmarks ->
-                // Draw all landmarks for the current face
-                drawFaceLandmarks(canvas, faceLandmarks, offsetX, offsetY)
+                 drawFaceLandmarks(canvas, faceLandmarks, offsetX, offsetY)
+                // drawFaceConnectors(canvas, faceLandmarks, offsetX, offsetY)
+            }
 
-                // Draw all connectors for the current face
-                //drawFaceConnectors(canvas, faceLandmarks, offsetX, offsetY)
+            val currentTime = System.currentTimeMillis()
+            if (boundingBox != null && currentTime - lastBoxTimestamp <= boundingBoxDuration) {
+                canvas.drawRect(boundingBox!!, boxPaint)
+                boxLabel?.let {
+                    val labelPadding = 10f
+                    val textWidth = labelPaint.measureText(it)
+                    val labelHeight = labelPaint.textSize + labelPadding * 2
+                    val rectLeft = boundingBox!!.left
+                    val rectTop = boundingBox!!.top - labelHeight
+                    val rectRight = rectLeft + textWidth + labelPadding * 2
+                    val rectBottom = boundingBox!!.top
+
+                    canvas.drawRect(
+                        rectLeft,
+                        rectTop,
+                        rectRight,
+                        rectBottom,
+                        labelBackgroundPaint
+                    )
+                    canvas.drawText(it, rectLeft + labelPadding, rectBottom - labelPadding, labelPaint)
+                }
+            } else {
+                if (currentTime - lastBoxTimestamp > boundingBoxDuration) {
+                    boundingBox = null
+                    boxLabel = null
+                }
+                else {}
             }
         }
     }
+
     private val SELECTED_LANDMARK_INDICES = listOf(
-        10,   // TOP_HEAD
-        152,  // CHIN
-        1,    // NOSE
-        13, 14, 78, 308, // MOUTH_TOP, MOUTH_BOTTOM, MOUTH_LEFT, MOUTH_RIGHT
-        159, 145, 386, 374 // LEFT_EYE_TOP, LEFT_EYE_BOTTOM, RIGHT_EYE_TOP, RIGHT_EYE_BOTTOM
+        10, 152, 1, 13, 14, 78, 308, 159, 145, 386, 374
     )
-    /**
-     * Draws all landmarks for a single face on the canvas.
-     */
+
     private fun drawFaceLandmarks(
         canvas: Canvas,
         faceLandmarks: List<NormalizedLandmark>,
         offsetX: Float,
         offsetY: Float
     ) {
-        for (index in SELECTED_LANDMARK_INDICES) {
+        /*for (index in SELECTED_LANDMARK_INDICES) {
             val landmark = faceLandmarks.getOrNull(index) ?: continue
+            val x = landmark.x() * imageWidth * scaleFactor + offsetX
+            val y = landmark.y() * imageHeight * scaleFactor + offsetY
+            canvas.drawPoint(x, y, pointPaint)
+        }*/
+        faceLandmarks.forEach { landmark ->
             val x = landmark.x() * imageWidth * scaleFactor + offsetX
             val y = landmark.y() * imageHeight * scaleFactor + offsetY
             canvas.drawPoint(x, y, pointPaint)
         }
     }
 
-
-    /**
-     * Draws all the connectors between landmarks for a single face on the canvas.
-     */
     private fun drawFaceConnectors(
         canvas: Canvas,
         faceLandmarks: List<NormalizedLandmark>,
@@ -158,13 +188,60 @@ class OverlayView(context: Context?, attrs: AttributeSet?) :
                 min(width * 1f / imageWidth, height * 1f / imageHeight)
             }
             RunningMode.LIVE_STREAM -> {
-                // PreviewView is in FILL_START mode. So we need to scale up the
-                // landmarks to match with the size that the captured images will be
-                // displayed.
                 max(width * 1f / imageWidth, height * 1f / imageHeight)
             }
         }
         invalidate()
+    }
+
+    fun setBoundingBoxFromLandmarks(landmarks: List<NormalizedLandmark>, label: String? = null) {
+        if (landmarks.isEmpty()) return
+
+        val xCoords = landmarks.map { it.x() }
+        val yCoords = landmarks.map { it.y() }
+
+        val left = xCoords.minOrNull() ?: 0f
+        val right = xCoords.maxOrNull() ?: 0f
+        val top = yCoords.minOrNull() ?: 0f
+        val bottom = yCoords.maxOrNull() ?: 0f
+
+        setBoundingBox(
+            left * imageWidth,
+            top * imageHeight,
+            right * imageWidth,
+            bottom * imageHeight,
+            label
+        )
+    }
+
+    fun setBoundingBox(left: Float, top: Float, right: Float, bottom: Float, label: String? = null) {
+        val scaledLeft = left * scaleFactor + (width - imageWidth * scaleFactor) / 2f
+        val scaledTop = top * scaleFactor + (height - imageHeight * scaleFactor) / 2f
+        val scaledRight = right * scaleFactor + (width - imageWidth * scaleFactor) / 2f
+        val scaledBottom = bottom * scaleFactor + (height - imageHeight * scaleFactor) / 2f
+
+        boundingBox = RectF(scaledLeft, scaledTop, scaledRight, scaledBottom)
+        boxLabel = label
+
+        val boxColor = when (label) {
+            "Yawn" -> Color.YELLOW
+            "Drowsy" -> Color.rgb(255, 165, 0)
+            "Sleep" -> Color.RED
+            else -> Color.RED
+        }
+        boxPaint.color = boxColor
+        labelBackgroundPaint.color = boxColor
+
+        lastBoxTimestamp = System.currentTimeMillis()
+        invalidate()
+    }
+
+    fun clearBoundingBox(force: Boolean = false) {
+        if (force || System.currentTimeMillis() - lastBoxTimestamp > boundingBoxDuration) {
+            boundingBox = null
+            boxLabel = null
+            invalidate()
+        }
     }
 
     companion object {

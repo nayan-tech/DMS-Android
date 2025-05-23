@@ -1,18 +1,3 @@
-/*
- * Copyright 2023 The TensorFlow Authors. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *             http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package com.google.mediapipe.examples.facelandmarker.fragment
 
 import android.annotation.SuppressLint
@@ -23,15 +8,8 @@ import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.AdapterView
-import android.widget.TextView
 import android.widget.Toast
-import androidx.camera.core.Preview
-import androidx.camera.core.CameraSelector
-import androidx.camera.core.ImageAnalysis
-import androidx.camera.core.ImageProxy
-import androidx.camera.core.Camera
-import androidx.camera.core.AspectRatio
+import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
@@ -43,20 +21,17 @@ import com.google.mediapipe.examples.facelandmarker.R
 import com.google.mediapipe.examples.facelandmarker.databinding.FragmentCameraBinding
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.google.mediapipe.tasks.vision.facelandmarker.FaceLandmarkerResult
-import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
-import kotlin.math.abs
-import kotlin.math.atan2
-import kotlin.math.hypot
-import kotlin.math.roundToInt
+import kotlin.math.*
 
 class CameraFragment : Fragment(), FaceLandmarkerHelper.LandmarkerListener {
 
     companion object {
         private const val TAG = "Face Landmarker"
     }
+
     private var faceDetectedLast = false
     private var isCalibrating = false
     private var _fragmentCameraBinding: FragmentCameraBinding? = null
@@ -89,18 +64,6 @@ class CameraFragment : Fragment(), FaceLandmarkerHelper.LandmarkerListener {
     private var fbMedian: Float? = null
     private var mouthMedian: Float? = null
     private var eyeMedian: Float? = null
-
-    private val TOP_HEAD = 10
-    private val CHIN = 152
-    private val NOSE = 1
-    private val MOUTH_TOP = 13
-    private val MOUTH_BOTTOM = 14
-    private val MOUTH_LEFT = 78
-    private val MOUTH_RIGHT = 308
-    private val LEFT_EYE_TOP = 159
-    private val LEFT_EYE_BOTTOM = 145
-    private val RIGHT_EYE_TOP = 386
-    private val RIGHT_EYE_BOTTOM = 374
 
     override fun onResume() {
         super.onResume()
@@ -166,23 +129,19 @@ class CameraFragment : Fragment(), FaceLandmarkerHelper.LandmarkerListener {
                 faceLandmarkerHelperListener = this
             )
         }
-
-        initBottomSheetControls()
     }
 
-    private fun initBottomSheetControls() { /* ... unchanged ... */ }
-    private fun updateControlsUi() { /* ... unchanged ... */ }
     private fun setUpCamera() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(requireContext())
         cameraProviderFuture.addListener({
             cameraProvider = cameraProviderFuture.get()
-            bindCameraUseCases() // ✅ THIS MUST BE CALLED
+            bindCameraUseCases()
         }, ContextCompat.getMainExecutor(requireContext()))
     }
+
     @SuppressLint("UnsafeOptInUsageError")
     private fun bindCameraUseCases() {
-        val cameraProvider = cameraProvider
-            ?: throw IllegalStateException("Camera initialization failed.")
+        val cameraProvider = cameraProvider ?: return
 
         val cameraSelector = CameraSelector.Builder()
             .requireLensFacing(cameraFacing)
@@ -205,7 +164,6 @@ class CameraFragment : Fragment(), FaceLandmarkerHelper.LandmarkerListener {
                 }
             }
 
-        // Must unbind before rebinding
         cameraProvider.unbindAll()
 
         try {
@@ -217,7 +175,6 @@ class CameraFragment : Fragment(), FaceLandmarkerHelper.LandmarkerListener {
             Log.e(TAG, "Use case binding failed", exc)
         }
     }
-
 
     private fun detectFace(imageProxy: ImageProxy) {
         faceLandmarkerHelper.detectLiveStream(
@@ -234,30 +191,15 @@ class CameraFragment : Fragment(), FaceLandmarkerHelper.LandmarkerListener {
     override fun onResults(resultBundle: FaceLandmarkerHelper.ResultBundle) {
         activity?.runOnUiThread {
             val landmarks = resultBundle.result.faceLandmarks().firstOrNull()
-
             val faceDetectedNow = landmarks != null
 
             if (!faceDetectedNow) {
                 faceDetectedLast = false
                 isCalibrating = false
                 fragmentCameraBinding.tvCalibrating.visibility = View.GONE
+                fragmentCameraBinding.overlay.clearBoundingBox()
                 return@runOnUiThread
             }
-
-            if (!faceDetectedLast && faceDetectedNow) {
-                Log.d(TAG, "Face appeared — re-calibrating...")
-                fbDists.clear()
-                mouthRatios.clear()
-                eyeRatios.clear()
-                fbMedian = null
-                mouthMedian = null
-                eyeMedian = null
-                initTime = SystemClock.uptimeMillis()
-                isCalibrating = true
-            }
-            faceDetectedLast = true
-
-            val currentTime = SystemClock.uptimeMillis()
 
             val imageWidth = resultBundle.inputImageWidth
             val imageHeight = resultBundle.inputImageHeight
@@ -286,10 +228,21 @@ class CameraFragment : Fragment(), FaceLandmarkerHelper.LandmarkerListener {
             val mouthWidth = hypot(mouthLeftX - mouthRightX, mouthLeftY - mouthRightY)
             val mouthHeight = hypot(mouthTopX - mouthBottomX, mouthTopY - mouthBottomY)
             val mouthRatio = abs(mouthWidth - mouthHeight)
-
+            val currentFbDist = hypot(noseX - (topHeadX + chinX) / 2, noseY - (topHeadY + chinY) / 2)
             val headAngle = abs(Math.toDegrees(atan2(
                 (chinY - topHeadY).toDouble(), (chinX - topHeadX).toDouble()
             ))).toFloat()
+
+            val currentTime = SystemClock.uptimeMillis()
+
+            if (!faceDetectedLast && faceDetectedNow) {
+                fbDists.clear(); mouthRatios.clear(); eyeRatios.clear()
+                fbMedian = null; mouthMedian = null; eyeMedian = null
+                initTime = currentTime
+                isCalibrating = true
+            }
+
+            faceDetectedLast = true
 
             if (isCalibrating && currentTime - initTime < 5000) {
                 fbDists.add(hypot(noseX - (topHeadX + chinX) / 2, noseY - (topHeadY + chinY) / 2))
@@ -310,12 +263,16 @@ class CameraFragment : Fragment(), FaceLandmarkerHelper.LandmarkerListener {
             val eyeClosed = eyeRatio < eyeMedian!! * 0.8
             val mouthOpen = mouthRatio < mouthMedian!! * 0.5
             val headTilt = headAngle < 70f || headAngle > 110f
+            val fbTilt = currentFbDist < fbMedian!! * 0.5f || currentFbDist > fbMedian!! * 1.5f
+
+            var label: String? = null
 
             if (eyeClosed && !headTilt) {
                 if (drowsyTimer == null) drowsyTimer = currentTime
                 if (currentTime - drowsyTimer!! > 1500) {
                     drowsinessCount++
                     drowsyTimer = null
+                    label = "Drowsy"
                 }
             } else drowsyTimer = null
 
@@ -324,50 +281,50 @@ class CameraFragment : Fragment(), FaceLandmarkerHelper.LandmarkerListener {
                 if (currentTime - yawnTimer!! > 1500) {
                     yawnCount++
                     yawnTimer = null
+                    label = "Yawn"
                 }
             } else yawnTimer = null
 
-            if (eyeClosed && headTilt) {
+            if ((eyeClosed && headTilt)|| fbTilt) {
                 if (sleepTimer == null) sleepTimer = currentTime
                 if (currentTime - sleepTimer!! > 2500) {
                     sleepCount++
                     sleepTimer = null
+                    label = "Sleep"
                 }
             } else sleepTimer = null
 
+            if (label != null && landmarks != null) {
+                fragmentCameraBinding.overlay.setBoundingBoxFromLandmarks(landmarks, label)
+            } else {
+                fragmentCameraBinding.overlay.clearBoundingBox()
+            }
             fragmentCameraBinding.tvDrowsyCount.text = "Drowsy: $drowsinessCount"
             fragmentCameraBinding.tvYawnCount.text = "Yawn: $yawnCount"
             fragmentCameraBinding.tvSleepCount.text = "Sleep: $sleepCount"
 
-            fragmentCameraBinding.bottomSheetLayout.inferenceTimeVal.text =
-                String.format("%d ms", resultBundle.inferenceTime)
+            //fragmentCameraBinding.bottomSheetLayout.inferenceTimeVal.text =
+                //String.format("%d ms", resultBundle.inferenceTime)
 
             fragmentCameraBinding.overlay.setResults(
                 resultBundle.result,
-                resultBundle.inputImageHeight,
-                resultBundle.inputImageWidth,
+                imageHeight,
+                imageWidth,
                 RunningMode.LIVE_STREAM
             )
-            fragmentCameraBinding.overlay.invalidate()
         }
     }
+
     override fun onEmpty() {
         fragmentCameraBinding.overlay.clear()
+        fragmentCameraBinding.overlay.clearBoundingBox()
         activity?.runOnUiThread {
             drowsinessCount = 0
             yawnCount = 0
             sleepCount = 0
-
-            fbDists.clear()
-            mouthRatios.clear()
-            eyeRatios.clear()
-            fbMedian = null
-            mouthMedian = null
-            eyeMedian = null
-
-            isCalibrating = false
-            faceDetectedLast = false
-
+            fbDists.clear(); mouthRatios.clear(); eyeRatios.clear()
+            fbMedian = null; mouthMedian = null; eyeMedian = null
+            isCalibrating = false; faceDetectedLast = false
             fragmentCameraBinding.tvDrowsyCount.text = "Drowsy: 0"
             fragmentCameraBinding.tvYawnCount.text = "Yawn: 0"
             fragmentCameraBinding.tvSleepCount.text = "Sleep: 0"
@@ -375,15 +332,14 @@ class CameraFragment : Fragment(), FaceLandmarkerHelper.LandmarkerListener {
         }
     }
 
-
     override fun onError(error: String, errorCode: Int) {
         activity?.runOnUiThread {
             Toast.makeText(requireContext(), error, Toast.LENGTH_SHORT).show()
-            if (errorCode == FaceLandmarkerHelper.GPU_ERROR) {
+            /*if (errorCode == FaceLandmarkerHelper.GPU_ERROR) {
                 fragmentCameraBinding.bottomSheetLayout.spinnerDelegate.setSelection(
                     FaceLandmarkerHelper.DELEGATE_CPU, false
                 )
-            }
+            }*/
         }
     }
 }
